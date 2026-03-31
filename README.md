@@ -26,21 +26,39 @@ This installs the `mcp-google-contacts` command into your PATH.
 
 ## Authentication
 
-### Step 1 — Place your credentials file
+### Step 1 — Create a Google Cloud project and get credentials
 
-Download your OAuth client credentials from Google Cloud Console and place them at:
+If you don't already have OAuth credentials from Google, follow these steps. If you do, skip to Step 2.
 
+1. Go to [https://console.cloud.google.com/](https://console.cloud.google.com/) and sign in.
+2. Click the project dropdown (top-left) → **New Project** → give it a name → **Create**.
+3. In the left menu, go to **APIs & Services → Library**, search for **People API**, click it, and click **Enable**.
+4. In the left menu, go to **APIs & Services → OAuth consent screen**:
+   - Choose **External** → **Create**
+   - Fill in **App name**, **User support email**, and **Developer contact email** (your email for all three)
+   - Click **Save and Continue** through all steps, then **Back to Dashboard**
+   - The app stays in **Testing** mode, which is fine for personal use. If you want others to use it with their accounts, add them as test users on the **Test users** screen.
+5. In the left menu, go to **APIs & Services → Credentials**:
+   - Click **+ Create Credentials → OAuth client ID**
+   - Set **Application type** to **Desktop app** → **Create**
+   - Click **Download JSON** in the confirmation popup
+
+6. Place the downloaded file at:
+
+```bash
+mkdir -p ~/.config/google
+mv ~/Downloads/client_secret_*.json ~/.config/google/credentials.json
 ```
-~/.config/google/credentials.json
-```
 
-Alternatively, pass the path explicitly with `--credentials-file`, or use environment variables:
+Alternatively, pass its path explicitly with `--credentials-file`, or use environment variables:
 
 ```
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REFRESH_TOKEN=...
 ```
+
+> **"Google hasn't verified this app"**: When authorizing in the next step, you may see this warning. It is expected for personal apps in Testing mode — click **Advanced → Go to [App Name] (unsafe)** to proceed.
 
 ### Step 2 — Run the initial auth flow
 
@@ -56,7 +74,14 @@ Once you see `Running with stdio transport`, press Ctrl+C. Setup is complete.
 
 ## MCP Configuration
 
-Add this to your `.mcp.json` (or `claude_desktop_config.json`):
+The `mcpServers` block below is the same across all MCP-compatible clients. Where you put it depends on your client:
+
+| Client | Config file location |
+|---|---|
+| Claude Code | `.mcp.json` in your project root, or `~/.claude.json` globally |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) |
+| Cursor | Settings → MCP |
+| Other clients | See your client's documentation |
 
 ```json
 {
