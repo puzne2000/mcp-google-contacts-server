@@ -169,59 +169,97 @@ class GoogleContactsService:
             GoogleContactsError: If API request fails
         """
         max_results = max_results or config.default_max_results
-        
+
         try:
-            # Get list of connections (contacts)
-            results = self.service.people().connections().list(
-                resourceName='people/me',
-                pageSize=max_results,
-                personFields='names,emailAddresses,phoneNumbers',
-                sortOrder='FIRST_NAME_ASCENDING'
-            ).execute()
-            
-            connections = results.get('connections', [])
-            
-            if not connections:
-                return []
-            
             contacts = []
-            for person in connections:
-                names = person.get('names', [])
-                if not names:
-                    continue
-                
-                name = names[0]
-                given_name = name.get('givenName', '')
-                family_name = name.get('familyName', '')
-                display_name = name.get('displayName', '')
-                
-                # Apply name filter if provided
-                if name_filter and name_filter.lower() not in display_name.lower():
-                    continue
-                
-                # Get email addresses
-                emails = person.get('emailAddresses', [])
-                email = emails[0].get('value') if emails else None
-                
-                # Get phone numbers
-                phones = person.get('phoneNumbers', [])
-                phone = phones[0].get('value') if phones else None
-                
-                contacts.append({
-                    'resourceName': person.get('resourceName'),
-                    'givenName': given_name,
-                    'familyName': family_name,
-                    'displayName': display_name,
-                    'email': email,
-                    'phone': phone
-                })
-            
+            page_token = None
+
+            while True:
+                kwargs = dict(
+                    resourceName='people/me',
+                    pageSize=min(1000, max_results - len(contacts)),
+                    personFields='names,emailAddresses,phoneNumbers',
+                    sortOrder='FIRST_NAME_ASCENDING',
+                )
+                if page_token:
+                    kwargs['pageToken'] = page_token
+
+                results = self.service.people().connections().list(**kwargs).execute()
+                connections = results.get('connections', [])
+
+                for person in connections:
+                    names = person.get('names', [])
+                    if not names:
+                        continue
+
+                    name = names[0]
+                    display_name = name.get('displayName', '')
+
+                    if name_filter and name_filter.lower() not in display_name.lower():
+                        continue
+
+                    emails = person.get('emailAddresses', [])
+                    phones = person.get('phoneNumbers', [])
+
+                    contacts.append({
+                        'resourceName': person.get('resourceName'),
+                        'givenName': name.get('givenName', ''),
+                        'familyName': name.get('familyName', ''),
+                        'displayName': display_name,
+                        'email': emails[0].get('value') if emails else None,
+                        'phone': phones[0].get('value') if phones else None,
+                    })
+
+                    if len(contacts) >= max_results:
+                        return contacts
+
+                page_token = results.get('nextPageToken')
+                if not page_token:
+                    break
+
             return contacts
-        
+
         except HttpError as error:
             raise GoogleContactsError(f"Error listing contacts: {error}")
     
-    def get_contact(self, identifier: str, include_email: bool = True, 
+    def search_contacts(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
+        """Search contacts using the Google People API's native search endpoint.
+
+        This searches server-side across all contacts, not just the first page.
+
+        Args:
+            query: Search term to find in contacts
+            max_results: Maximum number of results to return
+
+        Returns:
+            List of contact dictionaries
+
+        Raises:
+            GoogleContactsError: If API request fails
+        """
+        try:
+            results = self.service.people().searchContacts(
+                query=query,
+                readMask='names,emailAddresses,phoneNumbers',
+                pageSize=max_results
+            ).execute()
+
+            people = results.get('results', [])
+
+            if not people:
+                return []
+
+            contacts = []
+            for result in people:
+                person = result.get('person', {})
+                contacts.append(self._format_contact(person))
+
+            return contacts
+
+        except HttpError as error:
+            raise GoogleContactsError(f"Error searching contacts: {error}")
+
+    def get_contact(self, identifier: str, include_email: bool = True,
                    use_directory_api: bool = False) -> Dict[str, Any]:
         """Get a contact by resource name or email.
         
@@ -261,18 +299,18 @@ class GoogleContactsService:
                 
                 return self._format_contact(person)
             else:
-                # Assume it's an email address and search for it
-                contacts = self.list_contacts()
-                for contact in contacts:
+                # Assume it's an email address — use server-side search
+                results = self.search_contacts(identifier, max_results=10)
+                for contact in results:
                     if contact.get('email') == identifier:
                         return contact
-                
+
                 # If not found in regular contacts, try directory
                 if use_directory_api:
                     directory_users = self.list_directory_people(query=identifier, max_results=1)
                     if directory_users:
                         return directory_users[0]
-                
+
                 raise GoogleContactsError(f"Contact with email {identifier} not found")
         
         except HttpError as error:
@@ -400,7 +438,6 @@ class GoogleContactsService:
             
             # Execute the request
             response = request.execute()
-            print("response; ", response)
 
             
             # Process the results

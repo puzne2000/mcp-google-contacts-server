@@ -181,26 +181,11 @@ def register_tools(mcp: FastMCP) -> None:
             return "Error: Google Contacts service is not available. Please check your credentials."
         
         try:
-            # Get all contacts and filter locally with more flexible search
-            all_contacts = service.list_contacts(max_results=max(100, max_results*2))
-            
-            query = query.lower()
-            matches = []
-            
-            for contact in all_contacts:
-                if (query in contact.get('displayName', '').lower() or
-                    query in contact.get('givenName', '').lower() or
-                    query in contact.get('familyName', '').lower() or
-                    query in str(contact.get('email', '')).lower() or
-                    query in str(contact.get('phone', '')).lower()):
-                    matches.append(contact)
-                    
-                if len(matches) >= max_results:
-                    break
-                    
+            matches = service.search_contacts(query, max_results)
+
             if not matches:
                 return f"No contacts found matching '{query}'."
-                
+
             return f"Search results for '{query}':\n\n{format_contacts_list(matches)}"
         except Exception as e:
             return f"Error: Failed to search contacts - {str(e)}"
